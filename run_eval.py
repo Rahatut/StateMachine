@@ -25,6 +25,7 @@ Usage Examples:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import logging
 import os
@@ -45,7 +46,12 @@ from analysis.failure_onset import (
 )
 from analysis.first_error import analyze_first_error
 from eval.engine import HuggingFaceEngine, MockInferenceEngine
-from eval.eval_harness import extract_answer, format_prompt
+from eval.eval_harness import (
+    extract_answer,
+    extract_step_answers,
+    format_prompt,
+    normalize_answer,
+)
 from eval.models import CORE_MODELS, OPTIONAL_MODELS, ModelConfig
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -177,13 +183,27 @@ def run_evaluation(
         gold_container = str(rec.get("gold_container", "")).strip()
 
         # Extract answer against available containers
-        containers = rec.get("final_state", {}).get("containers", [])
+        containers = list(rec.get("final_state", {}).get("containers", []))
+        if gold_answer:
+            containers.append(gold_answer)
         extracted = extract_answer(raw_pred, candidate_containers=containers)
 
         is_correct = (
-            extracted.strip().lower() == gold_answer.strip().lower()
-            or extracted.strip().lower() == gold_container.strip().lower()
-            or raw_pred.strip().lower() == gold_answer.strip().lower()
+            normalize_answer(extracted) == normalize_answer(gold_answer)
+            or normalize_answer(extracted) == normalize_answer(gold_container)
+            or normalize_answer(raw_pred) == normalize_answer(gold_answer)
+            or normalize_answer(gold_answer) in normalize_answer(raw_pred)
+        )
+
+        gold_step_answers = rec.get("step_wise_gold_answers", [])
+        parsed_steps = extract_step_answers(raw_pred, gold_step_answers)
+        step_correct = [
+            normalize_answer(pred) == normalize_answer(gold)
+            for pred, gold in zip(parsed_steps, gold_step_answers)
+        ]
+        step_first_error = next(
+            (index + 1 for index, correct in enumerate(step_correct) if not correct),
+            None,
         )
 
         if is_correct:
@@ -199,8 +219,16 @@ def run_evaluation(
             "gold_answer": gold_answer,
             "gold_container": gold_container,
             "raw_prediction": raw_pred,
+            "prompt": prompt_text,
             "extracted_answer": extracted,
             "is_correct": is_correct,
+            "gold_step_answers": gold_step_answers,
+            "predicted_step_answers": parsed_steps,
+            "step_correct": step_correct,
+            "step_first_error": step_first_error,
+            "step_accuracy": (
+                sum(step_correct) / len(step_correct) if step_correct else None
+            ),
         }
         instance_results.append(result_item)
 
@@ -225,6 +253,14 @@ def run_evaluation(
                 rq3_by_d.setdefault(d_val, []).append(is_correct)
 
     overall_accuracy = correct_count / total_samples if total_samples > 0 else 0.0
+    step_rows = [item for item in instance_results if item["step_correct"]]
+    step_values = [
+        value for item in instance_results
+        for value in item["step_correct"]
+    ]
+    missing_predictions = sum(
+        1 for item in instance_results if not item["raw_prediction"].strip()
+    )
 
     # Family accuracies
     family_accuracies = {}
@@ -273,6 +309,10 @@ def run_evaluation(
         "dataset": dataset_name,
         "total_instances": total_samples,
         "overall_accuracy": overall_accuracy,
+        "missing_predictions": missing_predictions,
+        "stepwise_parseable_instances": len(step_rows),
+        "stepwise_coverage": len(step_rows) / total_samples if total_samples else 0.0,
+        "stepwise_accuracy": sum(step_values) / len(step_values) if step_values else None,
         "elapsed_seconds": elapsed,
         "family_accuracies": family_accuracies,
         "rq1_depth_curve": rq1_curve,
@@ -291,6 +331,9 @@ def run_evaluation(
         for it in instance_results:
             f.write(json.dumps(it, ensure_ascii=False) + "\n")
 
+    csv_file = model_output_dir / f"{dataset_name}_audit.csv"
+    write_audit_csv(instance_results, csv_file)
+
     metrics_file = model_output_dir / f"{dataset_name}_metrics.json"
     with open(metrics_file, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
@@ -299,10 +342,31 @@ def run_evaluation(
     generate_markdown_report(metrics, report_file)
 
     logger.info(f"Saved predictions → {pred_file}")
+    logger.info(f"Saved audit CSV   → {csv_file}")
     logger.info(f"Saved metrics     → {metrics_file}")
     logger.info(f"Saved report      → {report_file}")
 
     return metrics
+
+
+def write_audit_csv(rows: List[Dict[str, Any]], path: Path) -> None:
+    """Write a spreadsheet-friendly, one-row-per-query evaluation audit."""
+    fieldnames = [
+        "instance_id", "family", "experiment", "question", "gold_answer",
+        "gold_container", "raw_prediction", "extracted_answer", "is_correct",
+        "step_accuracy", "step_first_error", "requested_factors", "measured_factors",
+        "gold_step_answers", "predicted_step_answers", "step_correct", "prompt",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({
+                key: json.dumps(row.get(key), ensure_ascii=False)
+                if isinstance(row.get(key), (dict, list))
+                else row.get(key, "")
+                for key in fieldnames
+            })
 
 
 def generate_markdown_report(metrics: Dict[str, Any], report_path: Path) -> None:

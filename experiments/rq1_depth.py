@@ -8,8 +8,8 @@ Design:
     entity_count    : 1          ← clean causal interpretation (§4)
     distractor_updates: 0
     target_updates  : 2, 4, 6, 8, 12, 16
-    instances/cond  : 100
-    total           : 600
+    instances/cond  : 50
+    total           : 300
 
 Each instance uses a distinct seed (base_seed + instance_idx) for
 structural diversity.
@@ -45,7 +45,7 @@ FAMILY           = "basic_chain"
 ENTITY_COUNT     = 1          # E=1 — clean single-entity baseline (§4)
 DISTRACTOR_UPDATES = 0        # D=0 — no interference
 NUM_CONTAINERS   = 3
-INSTANCES_PER_CONDITION = 100
+INSTANCES_PER_CONDITION = 50
 EXPERIMENT_TAG   = "rq1_depth"
 BASE_SEED        = 1000       # Distinct from other experiments
 

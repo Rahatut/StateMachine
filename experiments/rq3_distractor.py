@@ -8,8 +8,9 @@ Design:
     entity_count    : 3
     target_updates  : 8 (fixed)
     distractor_updates: 4, 8, 16   (D=0 is already in RQ1 at T=8)
-    instances/cond  : 100
-    new instances   : 300
+    narrative distractors: N=4 with D=4, for a matched surface condition
+    instances/cond  : 50
+    new instances   : 200
 
 The D=0 condition at T=8 is available from RQ1.  This script generates
 only the three non-zero D conditions.
@@ -46,7 +47,7 @@ FAMILY          = "interleaved_chain"
 ENTITY_COUNT    = 3
 TARGET_UPDATES  = 8     # T fixed across all conditions
 NUM_CONTAINERS  = 4     # More containers for higher D levels
-INSTANCES_PER_CONDITION = 100
+INSTANCES_PER_CONDITION = 50
 EXPERIMENT_TAG  = "rq3_distractor"
 BASE_SEED       = 3000
 
@@ -86,7 +87,7 @@ def main():
     print(f"  D levels      : {D_LEVELS}")
     print(f"  containers    : {NUM_CONTAINERS}")
     print(f"  instances/lvl : {args.instances}")
-    print(f"  total         : {len(D_LEVELS) * args.instances}")
+    print(f"  total         : {len(D_LEVELS) * args.instances + args.instances}")
     if args.dry_run:
         print("  MODE          : DRY-RUN")
     else:
@@ -136,6 +137,23 @@ def main():
 
         all_records.extend(records)
         total_failures += failures
+
+    narrative_records, narrative_failures = generate_condition(
+        family=FAMILY,
+        entity_count=ENTITY_COUNT,
+        target_updates=TARGET_UPDATES,
+        distractor_updates=4,
+        num_instances=args.instances,
+        experiment_tag="rq3_narrative_distractor",
+        base_seed=BASE_SEED + 4000,
+        num_containers=NUM_CONTAINERS,
+        condition_label=(
+            f"{FAMILY} E={ENTITY_COUNT} T={TARGET_UPDATES} D=4 N=4"
+        ),
+        textual_distractor_count=4,
+    )
+    all_records.extend(narrative_records)
+    total_failures += narrative_failures
 
     elapsed = time.perf_counter() - t0
 

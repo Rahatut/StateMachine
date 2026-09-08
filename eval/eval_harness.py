@@ -40,7 +40,10 @@ def format_prompt(
     prompt_parts.append(f"Question:\n{question}\n")
 
     if chain_of_thought:
-        prompt_parts.append("Let's trace the state changes step by step:")
+        prompt_parts.append(
+            "Trace the target state explicitly. Write one line per state update "
+            "using `Step N: <container>` and finish with `Final answer: <container>`."
+        )
     else:
         prompt_parts.append("Answer:")
 
@@ -83,6 +86,36 @@ def extract_answer(
     return re.sub(r"[^\w\s-]", "", first_line).strip()
 
 
+def normalize_answer(value: Any) -> str:
+    """Normalize harmless formatting differences for final-answer comparison."""
+    return re.sub(r"\s+", " ", str(value).strip().lower()).strip(" .,!?:;\"'")
+
+
+def extract_step_answers(
+    raw_response: str,
+    candidate_answers: Sequence[str],
+) -> List[str]:
+    """Extract explicit ``Step N: answer`` values from a model response."""
+    answers: List[str] = []
+    candidates = sorted(
+        (str(answer) for answer in candidate_answers if answer),
+        key=len,
+        reverse=True,
+    )
+    step_pattern = re.compile(
+        r"(?:^|\n)\s*(?:step\s*)?(\d+)\s*[:.)-]\s*(.*)",
+        re.IGNORECASE,
+    )
+    for match in step_pattern.finditer(raw_response):
+        text = match.group(2).strip()
+        answer = next(
+            (candidate for candidate in candidates if candidate.lower() in text.lower()),
+            extract_answer(text, candidate_containers=candidates),
+        )
+        answers.append(answer)
+    return answers
+
+
 # ============================================================
 # Evaluation Summary Dataclasses
 # ============================================================
@@ -95,6 +128,8 @@ class InstanceEvalResult:
     gold_answer: str
     pred_answer: str
     is_correct: bool
+    raw_response: str = ""
+    prompt: str = ""
     gold_trajectory: Optional[List[Any]] = None
     pred_trajectory: Optional[List[Any]] = None
     error_analysis: Optional[Dict[str, Any]] = None
@@ -138,10 +173,15 @@ def evaluate_predictions(
         raw_pred = str(pred_info.get("pred_answer", "")).strip()
 
         # Extract answer against known container names if available
-        containers = inst.get("final_state", {}).get("containers", [])
+        containers = list(inst.get("final_state", {}).get("containers", []))
+        if inst.get("gold_answer"):
+            containers.append(str(inst["gold_answer"]))
         extracted_pred = extract_answer(raw_pred, candidate_containers=containers).lower()
 
-        is_correct = (extracted_pred == gold_answer or raw_pred.lower() == gold_answer)
+        is_correct = (
+            normalize_answer(extracted_pred) == normalize_answer(gold_answer)
+            or normalize_answer(raw_pred) == normalize_answer(gold_answer)
+        )
 
         # Trajectory error analysis if step-wise predictions are present
         gold_traj = inst.get("step_wise_gold")
@@ -159,6 +199,8 @@ def evaluate_predictions(
             gold_answer=inst.get("gold_answer", ""),
             pred_answer=raw_pred,
             is_correct=is_correct,
+            raw_response=str(pred_info.get("raw_response", raw_pred)),
+            prompt=str(pred_info.get("prompt", "")),
             gold_trajectory=gold_traj,
             pred_trajectory=pred_traj,
             error_analysis=error_analysis_dict,

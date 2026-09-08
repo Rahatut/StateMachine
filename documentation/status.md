@@ -83,7 +83,7 @@ Mechanistic Interpretability & Thesis Conclusions
   - `Qwen/Qwen2.5-3B-Instruct`
   - `Qwen/Qwen2.5-7B-Instruct`
   - `meta-llama/Llama-3.2-3B-Instruct`
-  - `allenai/OLMo-2-1124-7B-Instruct`
+       - `allenai/OLMo-2-1B`
 - Measure final-answer accuracy ($A_{\text{final}}$) and trajectory step accuracy ($A_{\text{step}}$).
 - Estimate operational failure onset ($L_f$) and classify error dynamics (Local, Propagating, Cancellation).
 - Fit difficulty curves and select models via AIC.

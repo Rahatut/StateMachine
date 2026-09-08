@@ -136,10 +136,18 @@ class HuggingFaceEngine(InferenceEngine):
 
         if precision == "4bit":
             from transformers import BitsAndBytesConfig
+
+            if torch.cuda.is_available():
+                major, minor = torch.cuda.get_device_capability()
+                compute_dtype = torch.bfloat16 if major >= 8 else torch.float16
+            else:
+                compute_dtype = torch.float16
+
             model_kwargs["quantization_config"] = BitsAndBytesConfig(
                 load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_compute_dtype=compute_dtype,
                 bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
             )
             model_kwargs["device_map"] = "auto"
         elif precision == "8bit":

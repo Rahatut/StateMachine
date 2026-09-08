@@ -15,7 +15,7 @@ Where:
         E_actual : Total unique entity IDs instantiated across trajectory lifetime.
         T_actual : Post-init operations that change the queried target's state.
         D_actual : Post-init operations NOT changing the queried target's state.
-        V_actual : Genuine location revisits by the target after intervening moves.
+        V_actual : Target location revisits plus target-affecting UNDO/REDO events.
 
     (L_word, N) <- derived from rendered narrative text:
         L_word   : Rendered narrative word count (proxy for tokenizer token count).
@@ -146,6 +146,7 @@ def measure_factors(
     T_actual = 0
     D_actual = 0
     target_locations_sequence: List[str] = []
+    history_reversal_count = 0
 
     for op in ops:
         # Put ops are setup initialization (not counted in T or D).
@@ -165,13 +166,15 @@ def measure_factors(
             T_actual += 1
             if target_loc_after is not None:
                 target_locations_sequence.append(target_loc_after)
+            if isinstance(op, (Undo, Redo)):
+                history_reversal_count += 1
         else:
             D_actual += 1
 
     # --------------------------------------------------------
     # 3. V_actual — genuine revisit count
     # --------------------------------------------------------
-    V_actual = _count_revisits(target_locations_sequence)
+    V_actual = _count_revisits(target_locations_sequence) + history_reversal_count
 
     # --------------------------------------------------------
     # 4. L_word & N_actual — narrative properties

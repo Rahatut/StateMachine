@@ -12,7 +12,7 @@ Design (from §7 of the research plan):
     undo_chain     1   8   0   0   9
     undo_redo_chain 1  8   0   0   9
 
-    100 instances per family = 500 total.
+    50 instances per family = 250 total.
 
 Purpose (§7):
     Can these additional operation families be generated reliably
@@ -60,7 +60,7 @@ PILOT_FAMILIES: List[Tuple] = [
     ("undo_redo_chain", 1, 8, 0, 3, "3-way edit history via Undo+Redo"),
 ]
 
-INSTANCES_PER_FAMILY = 100
+INSTANCES_PER_FAMILY = 50
 EXPERIMENT_TAG       = "rq5_pilot"
 BASE_SEED            = 5000
 

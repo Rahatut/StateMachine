@@ -8,7 +8,7 @@ Design:
     entity_count    : 1
     distractor_updates: 0
     target_updates  : 4, 8, 12, 16
-    instances/cond  : 100
+    instances/cond  : 50
     total           : 400
 
 Control (V=0) is the RQ1 basic_chain data at the same T values.
@@ -56,7 +56,7 @@ FAMILY           = "revision"
 ENTITY_COUNT     = 1
 DISTRACTOR_UPDATES = 0
 NUM_CONTAINERS   = 3
-INSTANCES_PER_CONDITION = 100
+INSTANCES_PER_CONDITION = 50
 EXPERIMENT_TAG   = "rq2_revision"
 BASE_SEED        = 2000
 MIN_V_ACTUAL_DEFAULT = 2

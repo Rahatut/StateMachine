@@ -31,6 +31,7 @@ from generator import (
 )
 from generator.trajectory_specs import TrajectorySpec
 from render.names import NameRegistry
+from render.names import make_distractor_sentences, splice_distractors
 from render.narrative import question_location, render_narrative
 from world.operations import Put
 
@@ -49,6 +50,7 @@ def generate_instance(
     num_containers: int,
     experiment_tag: str,
     seed: int,
+    textual_distractor_count: int = 0,
     max_attempts: int = 50,
 ) -> Optional[Dict[str, Any]]:
     """
@@ -100,12 +102,22 @@ def generate_instance(
                 t.ops, t.containers, names
             )
 
+            if textual_distractor_count:
+                distractors = make_distractor_sentences(
+                    rng,
+                    textual_distractor_count,
+                    names,
+                    [op.obj_type for op in t.ops if isinstance(op, Put)],
+                )
+                sentences = splice_distractors(rng, sentences, distractors)
+
             # Recompute measured factors now that sentences exist (for L_actual).
             m = measure_factors(
                 t.ops,
                 t.containers,
                 t.target_obj,
                 sentences=sentences,
+                textual_distractor_count=textual_distractor_count,
             )
 
             # Canonical trace (op type + fields).
@@ -141,6 +153,12 @@ def generate_instance(
             trace, _, _ = replay_trace(t.ops, t.containers)
             step_wise_gold = [
                 after.location.get(t.target_obj)
+                for _, _, after in trace
+            ]
+            step_wise_gold_answers = [
+                names.container(after.location.get(t.target_obj))
+                if after.location.get(t.target_obj) is not None
+                else "removed"
                 for _, _, after in trace
             ]
 
@@ -187,6 +205,7 @@ def generate_instance(
                 "gold_container": target_container,
                 "gold_answer": gold_answer,
                 "step_wise_gold": step_wise_gold,
+                "step_wise_gold_answers": step_wise_gold_answers,
 
                 "final_state": {
                     "location": final_state.location,
@@ -222,6 +241,7 @@ def generate_condition(
     base_seed: int = 0,
     num_containers: int = 3,
     condition_label: str = "",
+    textual_distractor_count: int = 0,
 ) -> Tuple[List[Dict[str, Any]], int]:
     """
     Generate num_instances for one experimental condition.
@@ -261,6 +281,7 @@ def generate_condition(
             num_containers=num_containers,
             experiment_tag=experiment_tag,
             seed=seed,
+            textual_distractor_count=textual_distractor_count,
         )
 
         if rec is not None:

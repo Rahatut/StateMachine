@@ -9,7 +9,7 @@ Implements §13 (Model Selection) and §14 (Standardized Evaluation):
   2. Qwen/Qwen2.5-3B-Instruct   (Scaling anchor - medium)
   3. Qwen/Qwen2.5-7B-Instruct   (Scaling anchor - large)
   4. meta-llama/Llama-3.2-3B-Instruct (Cross-family comparison at ~3B)
-  5. allenai/OLMo-2-1124-7B-Instruct or allenai/OLMo-2-1B (Open architecture & weights)
+    5. allenai/OLMo-2-1B (Open architecture & weights)
 - Optional Models:
   - microsoft/Phi-4-mini-instruct
 """
@@ -38,7 +38,7 @@ class ModelConfig:
     )
 
 
-# 5 Core Models (§13)
+# 5 Core Models (§13); the optional OLMo-2-7B entry is not part of the core set.
 CORE_MODELS: Dict[str, ModelConfig] = {
     "qwen2.5-0.5b": ModelConfig(
         name="qwen2.5-0.5b",

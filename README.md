@@ -39,7 +39,7 @@ We strictly distinguish between state-level factors, textual factors, and genera
 - **$T$ (Target-Relevant Depth)**: Count of post-initialization operations that causally alter the target entity's state or location.
 - **$D$ (Distractor State Updates)**: Count of post-initialization state-changing operations on non-target entities (semantic/state-level interference).
 - **$V$ (Revision Complexity)**: Count of genuine location revisits where the target returns to a previously occupied location after intervening transitions.
-- **$L$ (Rendered Token Length)**: Token/word length of the rendered narrative text ($L < 600$).
+- **$L$ (Rendered Word-Count Proxy)**: Word count of the rendered narrative text ($L < 600$ words).
 - **$N$ (Textual Distractors)**: Count of optional pure natural-language distractor sentences containing zero state transitions.
 - **$U$ (Bookkeeping Variable)**: Post-initialization operations ($U = T + D$).
 
@@ -51,7 +51,8 @@ We strictly distinguish between state-level factors, textual factors, and genera
 RQ1: How does temporal depth (T) affect dynamic state tracking under single-entity conditions (E=1, D=0, V=0)?
 RQ2: How does state revision (V) affect dynamic state tracking at matched temporal depth (E=1, D=0, V>=2)?
 RQ3: How does irrelevant state-transition interference (D) on constant entity load (E=3, T=8) affect tracking?
-RQ4: How does entity load (E) affect dynamic world-state reasoning?
+RQ4: Does entity load affect accuracy on a fixed target dependency chain?
+RQ5: Can structural operation families be generated and evaluated reliably at a common requested depth?
 RQ5 (Pilot): How do qualitatively different state operations (Split, Merge, Swap, Undo, Redo) affect reasoning at common depth (T=8)?
 ```
 
@@ -70,7 +71,13 @@ Evaluates the impact of revising previously established states at equivalent tem
 #### RQ3: Multi-Entity Interference Sweep ($E=3, T=8, V=0$)
 Evaluates resistance to irrelevant state-transition interference while holding entity load and target depth constant:
 - **Conditions**: $D \in \{4, 8, 16\}$ (with $D=0$ from RQ1 $T=8$) = **300 new instances**.
+- **Matched surface condition**: $D=4, N=4$, where $N$ counts state-neutral narrative distractor sentences.
 - **Run**: `python3 experiments/rq3_distractor.py`
+
+#### RQ4: Entity Load Sweep ($T=8, D=4$)
+Tests whether queried-entity accuracy remains stable as the number of available entities increases:
+- **Conditions**: $E \in \{2, 3, 4, 5\}$, 100 instances each = **400 instances**.
+- **Run**: `python3 experiments/rq4_entity_load.py`
 
 #### RQ5: Structural Operation Pilot ($T=8$)
 Preliminary pilot assessing whether the broader operation algebra can be reliably generated and evaluated at a normalized depth of $T=8$:
@@ -119,7 +126,7 @@ Evaluates 5 core instruction-tuned small language models under identical determi
   - `Qwen/Qwen2.5-3B-Instruct`
   - `Qwen/Qwen2.5-7B-Instruct`
   - `meta-llama/Llama-3.2-3B-Instruct`
-  - `allenai/OLMo-2-1124-7B-Instruct` (or `allenai/OLMo-2-1B-Instruct`)
+  - `allenai/OLMo-2-1B`
 - **Standardized Decoding**: `temperature=0.0`, `do_sample=False`, `max_new_tokens=128`, standardized zero-shot prompt template.
 
 ### Running SLMs via `run_eval.py`
@@ -162,7 +169,7 @@ ProPara serves as an **external naturalistic reference point** rather than a syn
 
 ## 8. Benchmark Generation & Test Suites
 
-Generate the complete benchmark suite (1,800 instances):
+Generate the complete benchmark suite (2,300 instances):
 ```bash
 python3 generate_all.py
 ```
