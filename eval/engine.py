@@ -171,6 +171,20 @@ class HuggingFaceEngine(InferenceEngine):
             self.model = self.model.to(device)
 
         self.model.eval()
+        self._configure_generation_defaults()
+
+    def _configure_generation_defaults(self) -> None:
+        """Remove sampling-only defaults from deterministic generation config."""
+        generation_config = getattr(self.model, "generation_config", None)
+        if generation_config is None:
+            return
+
+        # Some Hub configs retain temperature/top-p/top-k even when do_sample is
+        # false. Recent Transformers versions warn about those unused fields.
+        if not self.config.do_sample:
+            for field in ("temperature", "top_p", "top_k"):
+                if hasattr(generation_config, field):
+                    setattr(generation_config, field, None)
 
     def format_input(
         self,
