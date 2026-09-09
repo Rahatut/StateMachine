@@ -41,11 +41,15 @@ def format_prompt(
 
     if chain_of_thought:
         prompt_parts.append(
-            "Trace the target state explicitly. Write one line per state update "
-            "using `Step N: <container>` and finish with `Final answer: <container>`."
+            "Solve the problem by updating the world state step by step.\n\n"
+            "Step 1: <container>\n"
+            "Step 2: <container>\n"
+            "Step 3: <container>\n\n"
+            "Final Answer: <answer>\n"
+            "Stop immediately after Final Answer."
         )
     else:
-        prompt_parts.append("Answer:")
+        prompt_parts.append("Final Answer: <answer>\nStop immediately after Final Answer.")
 
     return "\n".join(prompt_parts)
 
@@ -63,27 +67,26 @@ def extract_answer(
     """
     cleaned = raw_response.strip().lower()
 
+    # Only the explicit final-answer marker is authoritative. Text elsewhere
+    # in a long generation must never receive credit.
+    final_match = re.search(r"final\s+answer\s*:\s*(.+?)(?:\n|$)", cleaned, re.IGNORECASE)
+    if not final_match:
+        return ""
+    final_segment = final_match.group(1).strip()
+
     # Boolean check (e.g. redo-validity)
-    if "true" in cleaned and "false" not in cleaned:
+    if final_segment == "true":
         return "True"
-    if "false" in cleaned and "true" not in cleaned:
+    if final_segment == "false":
         return "False"
 
     # Match candidate container names if provided
     if candidate_containers:
         for container in sorted(candidate_containers, key=len, reverse=True):
-            if container.lower() in cleaned:
+            if container.lower() in final_segment:
                 return container
 
-    # Fallback to looking after 'answer:'
-    if "answer:" in cleaned:
-        after_answer = cleaned.split("answer:")[-1].strip()
-        # Clean trailing punctuation
-        return re.sub(r"[^\w\s-]", "", after_answer).strip()
-
-    # First line fallback
-    first_line = cleaned.split("\n")[0].strip()
-    return re.sub(r"[^\w\s-]", "", first_line).strip()
+    return re.sub(r"[^\w\s-]", "", final_segment).strip()
 
 
 def normalize_answer(value: Any) -> str:

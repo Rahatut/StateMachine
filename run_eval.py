@@ -115,6 +115,7 @@ def run_evaluation(
     precision: str = "bfloat16",
     batch_size: int = 8,
     chain_of_thought: bool = False,
+    max_new_tokens: Optional[int] = None,
     mock: bool = False,
     hf_token: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -141,10 +142,9 @@ def run_evaluation(
     prompts: List[str] = []
 
     for rec in dataset_records:
-        prompt = format_prompt(
+        prompt = engine.format_input(
             context=rec["context"],
             question=rec["question"],
-            system_prompt=model_config.system_prompt,
             chain_of_thought=chain_of_thought,
         )
         prompts.append(prompt)
@@ -153,12 +153,16 @@ def run_evaluation(
         batch_prompts = prompts[i : i + batch_size]
         batch_responses = engine.generate_batch(
             batch_prompts,
-            max_new_tokens=model_config.max_new_tokens,
+            max_new_tokens=max_new_tokens or model_config.max_new_tokens,
             temperature=model_config.temperature,
             top_p=model_config.top_p,
             do_sample=model_config.do_sample,
         )
         raw_predictions.extend(batch_responses)
+        generation_metadata = getattr(engine, "last_generation_metadata", [])
+        if i == 0:
+            all_generation_metadata = []
+        all_generation_metadata.extend(generation_metadata)
         if (i + len(batch_prompts)) % (batch_size * 5) == 0 or (i + len(batch_prompts)) == total_samples:
             print(f"  Processed {min(i + len(batch_prompts), total_samples)} / {total_samples} ...", end="\r")
 
@@ -175,7 +179,7 @@ def run_evaluation(
     rq2_by_t: Dict[int, List[bool]] = {}
     rq3_by_d: Dict[int, List[bool]] = {}
 
-    for rec, raw_pred, prompt_text in zip(dataset_records, raw_predictions, prompts):
+    for index, (rec, raw_pred, prompt_text) in enumerate(zip(dataset_records, raw_predictions, prompts)):
         iid = rec["instance_id"]
         family = rec.get("family", "unknown")
         exp = rec.get("experiment", "unknown")
@@ -191,9 +195,8 @@ def run_evaluation(
         is_correct = (
             normalize_answer(extracted) == normalize_answer(gold_answer)
             or normalize_answer(extracted) == normalize_answer(gold_container)
-            or normalize_answer(raw_pred) == normalize_answer(gold_answer)
-            or normalize_answer(gold_answer) in normalize_answer(raw_pred)
         )
+        generation_info = all_generation_metadata[index] if index < len(all_generation_metadata) else {}
 
         gold_step_answers = rec.get("step_wise_gold_answers", [])
         parsed_steps = extract_step_answers(raw_pred, gold_step_answers)
@@ -229,6 +232,10 @@ def run_evaluation(
             "step_accuracy": (
                 sum(step_correct) / len(step_correct) if step_correct else None
             ),
+            "generated_tokens": generation_info.get("generated_tokens"),
+            "finish_reason": generation_info.get("finish_reason"),
+            "has_final_answer": bool(generation_info.get("has_final_answer", "final answer:" in raw_pred.lower())),
+            "predicted_answer": extracted,
         }
         instance_results.append(result_item)
 
@@ -314,6 +321,8 @@ def run_evaluation(
         "stepwise_coverage": len(step_rows) / total_samples if total_samples else 0.0,
         "stepwise_accuracy": sum(step_values) / len(step_values) if step_values else None,
         "elapsed_seconds": elapsed,
+        "chain_of_thought": chain_of_thought,
+        "max_new_tokens": max_new_tokens or model_config.max_new_tokens,
         "family_accuracies": family_accuracies,
         "rq1_depth_curve": rq1_curve,
         "rq1_failure_onset_L_T": l_t_onset,
@@ -356,6 +365,7 @@ def write_audit_csv(rows: List[Dict[str, Any]], path: Path) -> None:
         "gold_container", "raw_prediction", "extracted_answer", "is_correct",
         "step_accuracy", "step_first_error", "requested_factors", "measured_factors",
         "gold_step_answers", "predicted_step_answers", "step_correct", "prompt",
+        "generated_tokens", "finish_reason", "has_final_answer", "predicted_answer",
     ]
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -451,7 +461,8 @@ def main():
         help="Model precision / quantization",
     )
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size for inference")
-    parser.add_argument("--cot", action="store_true", help="Use Chain-of-Thought prompting")
+    parser.add_argument("--cot", action="store_true", help="Use structured step-by-step prompting")
+    parser.add_argument("--max-new-tokens", type=int, default=None, help="Override generated token limit (default: model config)")
     parser.add_argument("--mock", action="store_true", help="Run mock evaluation (dry-run without model weights)")
     parser.add_argument("--limit", type=int, default=None, help="Limit to first N dataset records")
     parser.add_argument("--output-dir", type=str, default="results", help="Directory to save evaluation artifacts")
@@ -486,6 +497,7 @@ def main():
         precision=args.precision,
         batch_size=args.batch_size,
         chain_of_thought=args.cot,
+        max_new_tokens=args.max_new_tokens,
         mock=args.mock,
         hf_token=args.hf_token,
     )

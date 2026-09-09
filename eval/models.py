@@ -29,7 +29,7 @@ class ModelConfig:
     parameter_count_b: float
     temperature: float = 0.0
     top_p: float = 1.0
-    max_new_tokens: int = 128
+    max_new_tokens: int = 256
     do_sample: bool = False
     system_prompt: Optional[str] = (
         "You are an expert dynamic state reasoning assistant. "

@@ -45,10 +45,11 @@ def test_prompt_formatting_and_extraction() -> None:
 
     # Extraction tests
     containers = ["the box", "the basket", "the drawer"]
-    assert extract_answer("Answer: the basket", candidate_containers=containers) == "the basket"
-    assert extract_answer("Based on the story, the object is in the basket.", candidate_containers=containers) == "the basket"
-    assert extract_answer("True") == "True"
-    assert extract_answer("False") == "False"
+    assert extract_answer("Final Answer: the basket", candidate_containers=containers) == "the basket"
+    assert extract_answer("The basket is mentioned. Final Answer: the drawer", candidate_containers=containers) == "the drawer"
+    assert extract_answer("The answer is the basket.", candidate_containers=containers) == ""
+    assert extract_answer("Final Answer: True") == "True"
+    assert extract_answer("Final Answer: False") == "False"
     print("  [PASS] Prompt formatting and answer extraction verified.")
 
 

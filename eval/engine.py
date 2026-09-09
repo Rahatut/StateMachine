@@ -61,6 +61,7 @@ class MockInferenceEngine(InferenceEngine):
     def __init__(self, model_name: str = "mock-model", behavior: str = "smart_heuristic"):
         self.model_name = model_name
         self.behavior = behavior
+        self.last_generation_metadata: List[Dict[str, Any]] = []
 
     def generate_batch(
         self,
@@ -78,11 +79,19 @@ class MockInferenceEngine(InferenceEngine):
                 text = str(p)
 
             if "Where is" in text or "where is" in text:
-                responses.append("Answer: the green box")
+                responses.append("Final Answer: the green box")
             elif "True or False" in text or "true or false" in text:
-                responses.append("Answer: True")
+                responses.append("Final Answer: True")
             else:
-                responses.append("Answer: container")
+                responses.append("Final Answer: container")
+        self.last_generation_metadata = [
+            {
+                "generated_tokens": 0,
+                "finish_reason": "eos_token",
+                "has_final_answer": "final answer:" in response.lower(),
+            }
+            for response in responses
+        ]
         return responses
 
 
@@ -196,7 +205,13 @@ class HuggingFaceEngine(InferenceEngine):
         system_content = self.config.system_prompt or "You are a precise state reasoning assistant."
         user_content = f"Narrative:\n{context}\n\nQuestion:\n{question}"
         if chain_of_thought:
-            user_content += "\n\nPlease think step by step and conclude with 'Answer: <location>'."
+            user_content += (
+                "\n\nSolve the problem by updating the world state step by step.\n\n"
+                "Step 1: <container>\nStep 2: <container>\nStep 3: <container>\n\n"
+                "Final Answer: <answer>\nStop immediately after Final Answer."
+            )
+        else:
+            user_content += "\n\nFinal Answer: <answer>\nStop immediately after Final Answer."
 
         messages = [
             {"role": "system", "content": system_content},
@@ -274,4 +289,17 @@ class HuggingFaceEngine(InferenceEngine):
         new_tokens = output_ids[:, input_len:]
 
         decoded = self.tokenizer.batch_decode(new_tokens, skip_special_tokens=True)
+        eos_token_id = self.tokenizer.eos_token_id
+        metadata: List[Dict[str, Any]] = []
+        for token_ids, text in zip(new_tokens, decoded):
+            token_list = token_ids.tolist()
+            eos_index = token_list.index(eos_token_id) if eos_token_id in token_list else None
+            reached_eos = eos_index is not None
+            token_count = (eos_index + 1) if eos_index is not None else len(token_list)
+            metadata.append({
+                "generated_tokens": token_count,
+                "finish_reason": "eos_token" if reached_eos else "length",
+                "has_final_answer": "final answer:" in text.lower(),
+            })
+        self.last_generation_metadata = metadata
         return [d.strip() for d in decoded]
