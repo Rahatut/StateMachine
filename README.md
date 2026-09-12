@@ -1,186 +1,195 @@
-# DWS-Bench: Dynamic World-State Reasoning Benchmark
+# DWS-Bench
 
-A deterministic state-machine benchmark and evaluation framework for evaluating dynamic world-state reasoning in Small Instruction-Tuned Language Models (SLMs) and LLMs from natural-language event narratives.
+DWS-Bench is a deterministic benchmark for dynamic world-state reasoning in
+small language models. It generates symbolic state-transition trajectories,
+validates them against explicit structural contracts, renders them as natural
+language, and evaluates model answers against simulator-derived ground truth.
 
----
+The simulator is the source of truth: the renderer never defines or changes an
+instance's gold answer.
 
-## 1. Core Principles & Methodology
+## Project Structure
 
-1. **The Simulator is the Source of Truth**: Every natural-language instance is rendered from a verified canonical symbolic state-transition sequence executed on a deterministic world simulator.
-2. **Five-Group Capability Taxonomy**: Evaluates 8 distinct trajectory families across 5 capability groups.
-3. **Decoupled Factor Measurement (§9)**: The generator independently measures actual factors from the symbolic trace:
-   $$\boxed{(E,T,D,V,L)_{\text{actual}} = f(\text{canonical symbolic trace}) \neq (E,T,D,V,L)_{\text{requested}}}$$
-   protecting empirical comparisons against generator assumptions, ambiguity, and unintended operations.
-4. **Controlled Isolation**: Experimental dimensions (temporal depth $T$, state-level distractor interference $D$, revision complexity $V$, and entity load $E$) are varied independently to establish unconfounded behavioral baselines.
-5. **Separation of Evidence and Mechanisms**: Behavioral degradation curves and failure onset points are established experimentally before testing mechanistic or attention-based hypotheses.
+| Path | Purpose |
+|---|---|
+| `world/` | World state, operations, and replay logic |
+| `generator/` | Query specifications, trajectory generation, sampling, and validation |
+| `render/` | Natural-language rendering and templates |
+| `eval/` | Model configurations, inference engines, and evaluation harness |
+| `analysis/` | Accuracy analysis, failure onset, and error classification |
+| `experiments/` | RQ1-RQ5 dataset-generation scripts |
+| `data/` | Generated JSONL benchmark datasets |
+| `results/` | Evaluation predictions, metrics, and reports |
+| `diagrams/` | Conceptual thesis-diagram source files |
+| `report/` | LaTeX thesis source and figure assets |
+| `test/` | Smoke, invariant, factor, analysis, and pipeline tests |
 
----
+## Requirements
 
-## 2. Five-Group Capability Taxonomy & 8 Trajectory Families
+Python 3.10 or newer is recommended. Install the declared dependencies from the
+repository root:
 
-| Capability Group | Trajectory Family | State-Transition Semantics | Targeted Failure Phenomenon / Hypothesis |
-|---|---|---|---|
-| **A. Sequential State Tracking** (RQ1, RQ2) | `basic_chain` | Pure temporal depth ($E=1, D=0$) with sequential `Move` updates | Degradation with temporal depth |
-| | `revision` | Sequential moves with repeated location revisits ($V \ge 2$) | Interference from previously established state |
-| **B. Multi-Entity Interference** (RQ3) | `interleaved_chain` | Target entity updates strictly interleaved with distractor entity moves | Susceptibility to irrelevant state-transition interference |
-| **C. Identity Transformation** (RQ5 Pilot) | `split_chain` | Dynamic entity multiplication via `Split` | Difficulty tracking identity branching & child states |
-| | `merge_chain` | Container-level entity consolidation via `Merge` | Over-persistence (failing container-level relocation) |
-| **D. Global State Operations** (RQ5 Pilot) | `swap_chain` | Simultaneous bilateral container exchange via `Swap` | Relational state exchange / unilateral overwrite error |
-| **E. Temporal Edit History** (RQ5 Pilot) | `undo_chain` | Rollback of operations via `Undo` | Historical state reversal / treating undone actions as real |
-| | `undo_redo_chain` | 3-way history awareness via `Undo` + `Redo` | History re-application & cycle tracking |
-
----
-
-## 3. Experimental Factor Formalism
-
-We strictly distinguish between state-level factors, textual factors, and generation bookkeeping:
-
-- **$E$ (Entity Load)**: Total number of entities instantiated across the trajectory lifetime.
-- **$T$ (Target-Relevant Depth)**: Count of post-initialization operations that causally alter the target entity's state or location.
-- **$D$ (Distractor State Updates)**: Count of post-initialization state-changing operations on non-target entities (semantic/state-level interference).
-- **$V$ (Revision Complexity)**: Count of genuine location revisits where the target returns to a previously occupied location after intervening transitions.
-- **$L$ (Rendered Word-Count Proxy)**: Word count of the rendered narrative text ($L < 600$ words).
-- **$N$ (Textual Distractors)**: Count of optional pure natural-language distractor sentences containing zero state transitions.
-- **$U$ (Bookkeeping Variable)**: Post-initialization operations ($U = T + D$).
-
----
-
-## 4. Research Questions (RQ1–RQ5)
-
-```text
-RQ1: How does temporal depth (T) affect dynamic state tracking under single-entity conditions (E=1, D=0, V=0)?
-RQ2: How does state revision (V) affect dynamic state tracking at matched temporal depth (E=1, D=0, V>=2)?
-RQ3: How does irrelevant state-transition interference (D) on constant entity load (E=3, T=8) affect tracking?
-RQ4: Does entity load affect accuracy on a fixed target dependency chain?
-RQ5: Can structural operation families be generated and evaluated reliably at a common requested depth?
-RQ5 (Pilot): How do qualitatively different state operations (Split, Merge, Swap, Undo, Redo) affect reasoning at common depth (T=8)?
-```
-
-### Experimental Sweeps:
-
-#### RQ1: Temporal Depth Sweep ($E=1, D=0, V=0$)
-Clean unconfounded baseline testing how models maintain dynamic state as temporal depth increases:
-- **Conditions**: $T \in \{2, 4, 6, 8, 12, 16\}$, 100 instances each = **600 instances**.
-- **Run**: `python3 experiments/rq1_depth.py`
-
-#### RQ2: Revision Complexity Sweep ($E=1, D=0, V \ge 2$)
-Evaluates the impact of revising previously established states at equivalent temporal depth:
-- **Conditions**: $T \in \{4, 8, 12, 16\}$, 100 instances each = **400 instances** (control is RQ1 $V=0$).
-- **Run**: `python3 experiments/rq2_revision.py`
-
-#### RQ3: Multi-Entity Interference Sweep ($E=3, T=8, V=0$)
-Evaluates resistance to irrelevant state-transition interference while holding entity load and target depth constant:
-- **Conditions**: $D \in \{4, 8, 16\}$ (with $D=0$ from RQ1 $T=8$) = **300 new instances**.
-- **Matched surface condition**: $D=4, N=4$, where $N$ counts state-neutral narrative distractor sentences.
-- **Run**: `python3 experiments/rq3_distractor.py`
-
-#### RQ4: Entity Load Sweep ($T=8, D=4$)
-Tests whether queried-entity accuracy remains stable as the number of available entities increases:
-- **Conditions**: $E \in \{2, 3, 4, 5\}$, 100 instances each = **400 instances**.
-- **Run**: `python3 experiments/rq4_entity_load.py`
-
-#### RQ5: Structural Operation Pilot ($T=8$)
-Preliminary pilot assessing whether the broader operation algebra can be reliably generated and evaluated at a normalized depth of $T=8$:
-- **Families**: `split_chain` ($E=2$), `merge_chain` ($E=2$), `swap_chain` ($E=2$), `undo_chain` ($E=1$), `undo_redo_chain` ($E=1$).
-- **Instances**: 100 per family = **500 instances**.
-- **Run**: `python3 experiments/rq5_pilot.py`
-
----
-
-## 5. Metric Hierarchy & Failure Analysis
-
-### Metric Hierarchy
-1. **Primary Outcome ($A_{\text{final}}$)**: Exact-match accuracy on the final query answer.
-2. **Trajectory State Accuracy ($A_{\text{step}}$)**: Accuracy of intermediate state tracking across all steps.
-3. **Transition Accuracy ($A_{\text{transition}}$)**: Correct application of individual state transitions.
-4. **Failure Dynamics**: Failure onset ($L_f$), degradation slope, and error classification.
-
-### Failure Onset ($L_f$) & Curve Fitting
-- **Candidate Models**:
-  - Linear: $A(x) = a + bx$
-  - Exponential Decay: $A(x) = ae^{-bx} + c$
-  - Sigmoid: $A(x) = c + \frac{a-c}{1 + e^{b(x - x_0)}}$
-- **Primary Selection**: **Akaike Information Criterion (AIC)** (penalizes parameter count); $R^2$ reported as descriptive fit.
-- **Operational Failure Onset**: $L_f = \min \{ x : A(x) < \tau \}$ (evaluated at operational thresholds $\tau \in \{0.60, 0.70, 0.80\}$).
-- **Multi-Dimensional Failure Profile**: $M = (L_T, L_D, L_V, L_E)$.
-
-### Formal Checkpoint Error Classification
-Let binary checkpoint sequence $C_t = \mathbb{I}(\hat{S}_t = S_t)$ compare gold state $S_t$ and predicted intermediate state $\hat{S}_t$:
-
-```text
-111111  ->  NO_ERROR            (Exact match across all steps)
-110110  ->  LOCAL_ERROR         (Temporary recovery at j > t, but final answer is wrong)
-110000  ->  PROPAGATING_ERROR   (Error at step t propagates to all subsequent steps)
-111110  ->  FINAL_ONLY_ERROR    (Intermediate states correct; answer extraction/generation fails)
-110011  ->  CANCELLATION_ERROR  (Intermediate error occurs, but final answer is restored)
-```
-
----
-
-## 6. Standardized Evaluation Harness & Core Models
-
-Evaluates 5 core instruction-tuned small language models under identical deterministic decoding:
-
-- **Core Models**:
-  - `Qwen/Qwen2.5-0.5B-Instruct`
-  - `Qwen/Qwen2.5-3B-Instruct`
-  - `Qwen/Qwen2.5-7B-Instruct`
-  - `meta-llama/Llama-3.2-3B-Instruct`
-  - `allenai/OLMo-2-1B`
-- **Standardized Decoding**: `temperature=0.0`, `do_sample=False`, `max_new_tokens=128`, standardized zero-shot prompt template.
-
-### Running SLMs via `run_eval.py`
-
-Install dependencies:
 ```bash
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
-Run evaluation across models and experimental slices:
-```bash
-# Mock dry-run on full benchmark (no GPU required)
-python3 run_eval.py --model qwen2.5-0.5b --dataset full --mock
+The optional model backends in `requirements.txt` are only needed for real
+inference. Mock evaluation and the generation tests do not require a GPU.
 
-# Evaluate Qwen2.5-0.5B on RQ1 Temporal Depth Sweep
-python3 run_eval.py --model qwen2.5-0.5b --dataset rq1 --device cuda --precision bfloat16
+## Benchmark Design
 
-# Evaluate Llama-3.2-3B on full benchmark with 4-bit quantization
-python3 run_eval.py --model llama-3.2-3b --dataset full --device auto --precision 4bit
+Each accepted instance records the realized factors:
 
-# Evaluate with Chain-of-Thought (CoT) prompting
-python3 run_eval.py --model qwen2.5-3b --dataset full --cot --device cuda
-```
+- `E`: entity load
+- `T`: target-relevant update depth
+- `D`: state-changing distractor updates
+- `N`: text-only narrative distractors
+- `V`: revision complexity
+- `U`: total canonical updates
+- `L`: rendered word-count proxy
 
-Evaluation outputs stored in `results/<model_name>/`:
-- `<dataset>_predictions.jsonl`: Detailed per-instance model predictions, extracted answers, and correctness.
-- `<dataset>_metrics.json`: Aggregated accuracy, per-family breakdowns, and failure onsets ($L_T, L_D$).
-- `<dataset>_report.md`: Markdown summary table and degradation curves.
+The benchmark supports eight operations: `PUT`, `MOVE`, `REMOVE`, `UNDO`,
+`REDO`, `SPLIT`, `MERGE`, and `SWAP`.
 
----
+### Research Sweeps
 
-## 7. Naturalistic Reference & ProPara Scope
+| Sweep | Conditions | Default records |
+|---|---|---:|
+| RQ1: temporal depth | `T` in `{2, 4, 6, 8, 12, 16}` | 300 |
+| RQ2: revision | `T` in `{4, 8, 12, 16}` with revision | 200 |
+| RQ3: distractor interference | `D` in `{4, 8, 16}` plus matched narrative distractors | 200 |
+| RQ4: entity load | `E` in `{2, 3, 4, 5}`, with `T=8`, `D=4` | 200 |
+| RQ5: structural pilot | split, merge, swap, undo, and undo-redo families | 250 |
+| **Full benchmark** | All generated sweeps | **1,150** |
 
-ProPara serves as an **external naturalistic reference point** rather than a synthetic benchmark replacement:
-- Bounded strictly to sequential tracking (`basic_chain`), interference (`interleaved_chain`), and repeated state change (`revision`).
-- Structural operations (`Split`, `Merge`, `Swap`, `Undo`, `Redo`) belong exclusively to the controlled synthetic state machine and are not forced into naturalistic corpora.
-- Preceded by a 10-paragraph mapping audit to assess expressiveness on natural procedural text.
+RQ5 requests `T=8`, but the frozen records do not realize identical depth for
+every family: `split_chain` records have `T_actual=7` and `D_actual=1`, while
+the other four pilot families have `T_actual=8`.
 
----
+## Generate Data
 
-## 8. Benchmark Generation & Test Suites
+Run reachability probes without writing the benchmark:
 
-Generate the complete benchmark suite (2,300 instances):
-```bash
-python3 generate_all.py
-```
-
-Run the complete master test suite:
-```bash
-python3 test/run_all.py
-```
-
-Run dry-run reachability probes:
 ```bash
 python3 generate_all.py --dry-run
 ```
 
+Generate the complete default suite and aggregate it into
+`data/full_benchmark.jsonl`:
+
+```bash
+python3 generate_all.py
+```
+
+The generated files are:
+
+```text
+data/rq1_depth/rq1_depth.jsonl             300 records
+data/rq2_revision/rq2_revision.jsonl       200 records
+data/rq3_distractor/rq3_distractor.jsonl   200 records
+data/rq4_entity_load/rq4_entity_load.jsonl 200 records
+data/rq5_pilot/rq5_pilot.jsonl             250 records
+data/full_benchmark.jsonl                1,150 records
+```
+
+## Run Evaluation
+
+The evaluation CLI supports these registered model keys:
+
+```text
+qwen2.5-0.5b
+qwen2.5-3b
+qwen2.5-7b
+llama-3.2-3b (not evaluated)
+olmo-2-1b (not evaluated)
+```
+
+The default generation configuration uses deterministic decoding and
+`max_new_tokens=256`. Run a dependency-free mock evaluation with:
+
+```bash
+python3 run_eval.py --model qwen2.5-0.5b --dataset full --mock
+```
+
+Run real inference on a supported device with:
+
+```bash
+python3 run_eval.py \
+  --model qwen2.5-3b \
+  --dataset full \
+  --device cuda \
+  --precision bfloat16
+```
+
+Dataset shortcuts currently include `full`, `rq1`, `rq2`, `rq3`, and `rq5`.
+RQ4 has no shortcut, so pass its JSONL path explicitly:
+
+```bash
+python3 run_eval.py \
+  --model qwen2.5-0.5b \
+  --dataset data/rq4_entity_load/rq4_entity_load.jsonl \
+  --mock
+```
+
+Use `--cot` to enable the structured chain-of-thought prompt. Evaluation output
+is written under `results/<model_name>/` and includes predictions JSONL, metrics
+JSON, a Markdown report, and an audit CSV.
+
+## Current Evaluation Status
+
+The repository contains registered configurations for five model families, but
+the stored thesis results currently cover the three Qwen2.5 variants under
+zero-shot and CoT prompting. The report presents evaluated results for RQ1-RQ3
+and the RQ5 structural pilot. RQ4 data generation is complete, but corresponding
+model-output summaries are still pending.
+
+The naturalistic reference work is treated as a pilot/descriptive analysis;
+there are no model-level ProPara results in the current evaluation artifacts.
+
+## Tests
+
+Run the master test and smoke-test collection:
+
+```bash
+python3 test/run_all.py
+```
+
+The master runner covers the smoke, trajectory, invariant, measured-factor,
+analysis, and evaluation-pipeline tests. The evaluator-v2 test is run separately
+with `pytest`:
+
+```bash
+python3 -m pytest test/test_evaluator_v2.py
+```
+
+## Thesis Figures and Report
+
+The six conceptual diagrams in `diagrams/` use the local renderer in
+`diagrams/helpers.py`. Generate them from the repository root:
+
+```bash
+for script in diagrams/fig*.py; do
+  python3 "$script" || exit 1
+done
+```
+
+The scripts write PNG and PDF files to `report/images/thesis_figures/`. The
+analysis plots already stored in that directory are separate from these six
+conceptual diagrams.
+
+Build the thesis from the `report/` directory:
+
+```bash
+cd report
+pdflatex -interaction=nonstopmode -halt-on-error main.tex
+biber main
+pdflatex -interaction=nonstopmode -halt-on-error main.tex
+```
+
+## Reproducibility Notes
+
+Generation records requested and realized factors, random seeds where applicable,
+and validation outcomes. Evaluation records model configuration, prompt mode,
+decoding settings, extracted answers, final correctness, and step-wise results.
+Keep generated data and result directories versioned or archived with the code
+revision used to produce them when reporting new experiments.

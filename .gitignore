@@ -53,5 +53,6 @@ Thumbs.db
 *.tmp
 *.temp
 
-results/
-report/
+
+/statemachine
+/.venv~
